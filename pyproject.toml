@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=45", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "rms-vad"
@@ -34,6 +34,9 @@ dev = ["pytest>=7.0", "numpy"]
 
 [project.urls]
 Homepage = "https://github.com/akkoaya/rms-vad"
+Repository = "https://github.com/akkoaya/rms-vad"
+Issues = "https://github.com/akkoaya/rms-vad/issues"
+Documentation = "https://github.com/akkoaya/rms-vad#readme"
 
 [tool.setuptools.packages.find]
 include = ["rms_vad*"]
