@@ -1,6 +1,9 @@
 """RMS-based Voice Activity Detection core."""
 
-import audioop
+try:
+    import audioop
+except ModuleNotFoundError:
+    import audioop_lts as audioop
 import time
 from collections import deque
 
