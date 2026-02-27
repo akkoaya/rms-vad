@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "rms-vad"
+version = "0.1.0"
+description = "Lightweight RMS-based Voice Activity Detection for ASR pipelines"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.8"
+authors = [
+    { name = "Digital Human Contributors" },
+]
+keywords = ["vad", "voice-activity-detection", "asr", "speech", "audio", "rms"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.optional-dependencies]
+numpy = ["numpy"]
+dev = ["pytest>=7.0", "numpy"]
+
+[project.urls]
+Homepage = "https://github.com/akkoaya/rms-vad"
+
+[tool.setuptools.packages.find]
+include = ["rms_vad*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
