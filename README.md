@@ -18,6 +18,12 @@ Zero-dependency core (only `audioop` from stdlib). Optional `numpy` for faster m
 - **Multiple API styles** - event-driven, callback, and iterator interfaces
 - **Multi-channel support** - auto-converts to mono (optional `numpy` acceleration)
 - **Lightweight & fast** - pure Python, minimal CPU overhead
+- **Config validation** - catches misconfiguration early with clear error messages
+- **Max / Min speech duration** - auto-end long segments, discard too-short ones
+- **Rich event metadata** - every event carries timestamp, RMS level and speech duration
+- **Runtime statistics** - speech ratio, segment count, min/max/avg RMS via `get_stats()`
+- **Audio utilities** - WAV I/O, energy dB, SNR estimation, `AudioCollector` for easy segment collection
+- **Context manager** - `with RmsVAD() as vad:` for automatic cleanup
 
 ## Installation
 
@@ -46,6 +52,7 @@ for chunk in mic_stream:
         elif event.type == VADEventType.AUDIO:
             asr.send(event.chunk)
         elif event.type == VADEventType.SPEECH_END:
+            print("Speech duration:", event.duration, "s")
             asr.end()
 ```
 
@@ -69,6 +76,46 @@ for event in vad.iter_events(mic_stream):
     ...
 ```
 
+### AudioCollector - collect complete speech segments
+
+```python
+from rms_vad import RmsVAD, AudioCollector
+
+vad = RmsVAD()
+collector = AudioCollector()
+
+for chunk in mic_stream:
+    for event in vad.feed(chunk):
+        segment = collector.feed(event)
+        if segment is not None:
+            # segment.audio  - complete PCM bytes
+            # segment.duration - speech length in seconds
+            segment.save_wav("speech_{}.wav".format(segment.segment_index))
+```
+
+### Context manager
+
+```python
+with RmsVAD(VADConfig(max_speech_duration=30)) as vad:
+    for chunk in mic_stream:
+        for event in vad.feed(chunk):
+            ...
+# state auto-reset on exit
+```
+
+### Runtime monitoring
+
+```python
+vad = RmsVAD()
+for chunk in mic_stream:
+    vad.feed(chunk)
+    print("Level:", vad.current_level, "Threshold:", vad.threshold)
+
+stats = vad.get_stats()
+print("Speech ratio:", stats["speech_ratio"])
+print("Segments:", stats["speech_segments"])
+```
+
 ## Configuration
 
 | Parameter | Default | Description |
@@ -88,6 +135,34 @@ for event in vad.iter_events(mic_stream):
 | `adapt_down_rate` | 1.0 | Threshold fast-drop rate |
 | `hysteresis_multiply` | 1.05 | History percentage multiplier |
 | `hysteresis_offset` | 0.02 | History percentage offset |
+| `max_speech_duration` | 0 | Auto-end speech after N seconds (0 = disabled) |
+| `min_speech_duration` | 0 | Discard segments shorter than N seconds (0 = disabled) |
+
+All parameters are validated on construction. Invalid values raise `ValueError` with a clear message.
+
+## Event Types
+
+| Event | Description | Key Fields |
+|-------|-------------|------------|
+| `SPEECH_START` | Speech onset detected | `pre_buffer`, `timestamp`, `rms_level` |
+| `AUDIO` | Audio chunk during active speech | `chunk`, `timestamp`, `rms_level` |
+| `SPEECH_END` | Speech ended after silence | `timestamp`, `rms_level`, `duration` |
+| `SPEECH_TIMEOUT` | Speech auto-ended (max duration) | `timestamp`, `rms_level`, `duration` |
+
+## Audio Utilities
+
+```python
+from rms_vad import pcm_to_wav, wav_to_pcm, save_wav, compute_energy_db, compute_snr
+
+# PCM <-> WAV conversion
+wav_bytes = pcm_to_wav(pcm_data, sample_rate=16000)
+pcm_data, sr, sw, ch = wav_to_pcm(wav_bytes)
+save_wav("output.wav", pcm_data)
+
+# Audio analysis
+db = compute_energy_db(pcm_data)           # energy in dB
+snr = compute_snr(speech_pcm, noise_pcm)   # SNR in dB
+```
 
 ## Algorithm
 
@@ -96,6 +171,7 @@ for event in vad.iter_events(mic_stream):
 3. **Adaptive threshold** - asymmetric: slow rise (0.25%/frame), fast drop (100%/frame)
 4. **State machine** - `SILENCE <-> SPEAKING` with attack/release debouncing
 5. **Pre-buffer** - captures audio before speech onset to avoid clipping leading phonemes
+6. **Duration guard** - optional max/min speech duration enforcement
 
 ## Requirements
 

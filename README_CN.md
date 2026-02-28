@@ -18,6 +18,12 @@
 - **多种 API 风格** - 事件驱动、回调和迭代器三种接口
 - **多声道支持** - 自动转换为单声道（可选 `numpy` 加速）
 - **轻量高效** - 纯 Python 实现，CPU 开销极低
+- **参数校验** - 构造时自动校验所有配置参数，提前捕获错误配置
+- **语音时长控制** - 超时自动结束长语音段，过短语音段自动丢弃
+- **丰富的事件元数据** - 每个事件携带时间戳、RMS 电平和语音时长
+- **运行时统计** - 通过 `get_stats()` 获取语音占比、段数、RMS 最小/最大/平均值
+- **音频工具集** - WAV 读写、能量 dB 计算、信噪比估算、`AudioCollector` 语音段收集器
+- **上下文管理器** - `with RmsVAD() as vad:` 自动清理状态
 
 ## 安装
 
@@ -46,6 +52,7 @@ for chunk in mic_stream:
         elif event.type == VADEventType.AUDIO:
             asr.send(event.chunk)
         elif event.type == VADEventType.SPEECH_END:
+            print("语音时长:", event.duration, "秒")
             asr.end()
 ```
 
@@ -69,6 +76,46 @@ for event in vad.iter_events(mic_stream):
     ...
 ```
 
+### AudioCollector - 收集完整语音段
+
+```python
+from rms_vad import RmsVAD, AudioCollector
+
+vad = RmsVAD()
+collector = AudioCollector()
+
+for chunk in mic_stream:
+    for event in vad.feed(chunk):
+        segment = collector.feed(event)
+        if segment is not None:
+            # segment.audio    - 完整 PCM 字节数据
+            # segment.duration - 语音时长（秒）
+            segment.save_wav("speech_{}.wav".format(segment.segment_index))
+```
+
+### 上下文管理器
+
+```python
+with RmsVAD(VADConfig(max_speech_duration=30)) as vad:
+    for chunk in mic_stream:
+        for event in vad.feed(chunk):
+            ...
+# 退出时自动重置状态
+```
+
+### 运行时监控
+
+```python
+vad = RmsVAD()
+for chunk in mic_stream:
+    vad.feed(chunk)
+    print("电平:", vad.current_level, "阈值:", vad.threshold)
+
+stats = vad.get_stats()
+print("语音占比:", stats["speech_ratio"])
+print("语音段数:", stats["speech_segments"])
+```
+
 ## 配置参数
 
 | 参数 | 默认值 | 说明 |
@@ -88,6 +135,34 @@ for event in vad.iter_events(mic_stream):
 | `adapt_down_rate` | 1.0 | 阈值快速下降速率 |
 | `hysteresis_multiply` | 1.05 | 历史百分比乘数 |
 | `hysteresis_offset` | 0.02 | 历史百分比偏移量 |
+| `max_speech_duration` | 0 | 超过 N 秒自动结束语音（0 = 不限制） |
+| `min_speech_duration` | 0 | 丢弃短于 N 秒的语音段（0 = 不限制） |
+
+所有参数在构造时自动校验，无效值会抛出 `ValueError` 并附带清晰的错误信息。
+
+## 事件类型
+
+| 事件 | 说明 | 关键字段 |
+|------|------|----------|
+| `SPEECH_START` | 检测到语音起始 | `pre_buffer`、`timestamp`、`rms_level` |
+| `AUDIO` | 活跃语音期间的音频块 | `chunk`、`timestamp`、`rms_level` |
+| `SPEECH_END` | 静音超时后语音结束 | `timestamp`、`rms_level`、`duration` |
+| `SPEECH_TIMEOUT` | 语音超时自动结束（超过最大时长） | `timestamp`、`rms_level`、`duration` |
+
+## 音频工具集
+
+```python
+from rms_vad import pcm_to_wav, wav_to_pcm, save_wav, compute_energy_db, compute_snr
+
+# PCM <-> WAV 互转
+wav_bytes = pcm_to_wav(pcm_data, sample_rate=16000)
+pcm_data, sr, sw, ch = wav_to_pcm(wav_bytes)
+save_wav("output.wav", pcm_data)
+
+# 音频分析
+db = compute_energy_db(pcm_data)           # 能量（dB）
+snr = compute_snr(speech_pcm, noise_pcm)   # 信噪比（dB）
+```
 
 ## 算法原理
 
@@ -96,6 +171,7 @@ for event in vad.iter_events(mic_stream):
 3. **自适应阈值** - 非对称调整：缓慢上升（每帧 0.25%），快速下降（每帧 100%）
 4. **状态机** - `静音 <-> 说话`，带 attack/release 去抖
 5. **预缓冲** - 捕获语音起始前的音频帧，避免截断起始音素
+6. **时长保护** - 可选的最大/最小语音时长限制
 
 ## 环境要求
 
